@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoadGuard AI | AI-Based Pothole Detection & Civic Reporting System</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdfa',
+              500: '#14b8a6',
+              600: '#0d9488',
+              900: '#134e4a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen flex flex-col selection:bg-cyan-500 selection:text-white">
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <!-- Logo & System Tag -->
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-emerald-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <i class="fa-solid fa-road text-white text-lg"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">RoadGuard <span class="text-cyan-400">AI</span></span>
+            <span class="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/60">Civic Sentinel</span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">AI-Powered Road Surface Monitoring & Rapid Repair Platform</p>
+        </div>
+      </div>
+
+      <!-- Live AI Model Status Banner (Desktop) -->
+      <div class="hidden md:flex items-center space-x-3 text-xs bg-slate-800/80 px-3.5 py-1.5 rounded-full border border-slate-700/60">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+        <span class="text-slate-300"><i class="fa-solid fa-microchip text-cyan-400 mr-1.5"></i>Model: <strong class="text-white">YOLOv8-RoadSafe</strong></span>
+        <span class="text-slate-500">|</span>
+        <span id="live-gps-badge" class="text-slate-300"><i class="fa-solid fa-satellite-dish text-emerald-400 mr-1 animate-pulse"></i>GPS: <span class="text-emerald-400 font-medium">Locating...</span></span>
+      </div>
+
+      <!-- Action Buttons & Portals -->
+      <div class="flex items-center space-x-3">
+        <a href="admin.html" class="inline-flex items-center px-3.5 py-2 text-xs font-medium rounded-lg text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white border border-slate-700 transition shadow-sm">
+          <i class="fa-solid fa-building-columns mr-1.5 text-amber-400"></i>
+          <span>Municipal Portal</span>
+        </a>
+
+        <button id="btn-open-report-modal" class="inline-flex items-center px-4 py-2 text-xs font-semibold rounded-lg text-slate-950 bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 shadow-md shadow-cyan-500/25 transition-all transform active:scale-95">
+          <i class="fa-solid fa-camera mr-1.5"></i>
+          <span>Report Pothole</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- QUICK STATS TICKER STRIP -->
+  <section class="bg-slate-900 border-b border-slate-800/80 px-4 py-2.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-y-2 text-xs text-slate-400">
+      <div class="flex items-center space-x-6 overflow-x-auto py-1">
+        <div class="flex items-center space-x-2">
+          <span class="text-slate-500">Total Tracked:</span>
+          <span id="stat-total" class="font-bold text-white text-sm bg-slate-800 px-2 py-0.5 rounded">--</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+          <span class="text-red-400 font-medium">High Hazard:</span>
+          <span id="stat-high" class="font-bold text-red-300 text-sm bg-red-950/60 border border-red-800/50 px-2 py-0.5 rounded">--</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span class="text-amber-400 font-medium">In Repair:</span>
+          <span id="stat-inprogress" class="font-bold text-amber-300 text-sm bg-amber-950/60 border border-amber-800/50 px-2 py-0.5 rounded">--</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+          <span class="text-blue-400 font-medium">Repaired & Verified:</span>
+          <span id="stat-repaired" class="font-bold text-blue-300 text-sm bg-blue-950/60 border border-blue-800/50 px-2 py-0.5 rounded">--</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3 text-slate-400">
+        <span><i class="fa-solid fa-bullhorn text-cyan-400 mr-1"></i>Report duplicate detection active (&lt;30m auto-merge)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAIN APP CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+
+    <!-- SEARCH & FILTER BAR -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/60 p-3.5 rounded-2xl border border-slate-800">
+      
+      <!-- Filter Chips -->
+      <div class="flex items-center space-x-2 overflow-x-auto pb-1 md:pb-0" id="filter-container">
+        <button data-filter="all" class="filter-btn active px-3.5 py-1.5 rounded-lg text-xs font-medium bg-cyan-500 text-slate-950 transition">
+          All Potholes
+        </button>
+        <button data-filter="high" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-red-500"></span> High Severity
+        </button>
+        <button data-filter="medium" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span> Medium
+        </button>
+        <button data-filter="low" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Low
+        </button>
+        <button data-filter="repaired" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-blue-400"></span> Repaired
+        </button>
+      </div>
+
+      <!-- Search & Map Mode Tools -->
+      <div class="flex items-center space-x-2">
+        <div class="relative flex-1 md:w-64">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          <input type="text" id="input-search" placeholder="Search street, avenue, or ID..." 
+                 class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition">
+        </div>
+        <button id="btn-recenter" title="Recenter Map" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs border border-slate-700 transition">
+          <i class="fa-solid fa-location-crosshairs mr-1 text-cyan-400"></i> Center
+        </button>
+      </div>
+    </div>
+
+    <!-- MAIN TWO-COLUMN WORKSPACE: INTERACTIVE MAP & DETAILS PANEL -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-[640px]">
+
+      <!-- MAP SECTION (LG: 8 COLS) -->
+      <div class="lg:col-span-8 flex flex-col bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden relative shadow-xl">
+        
+        <!-- Map Overlay Header Instructions -->
+        <div class="absolute top-3 left-3 z-[400] flex items-center gap-2">
+          <div class="glass-panel px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 shadow-lg flex items-center gap-2 border border-slate-700">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+            <span>Click any marker to inspect hazard or click on road to pin a new report</span>
+          </div>
+        </div>
+
+        <!-- Map Leaflet Container -->
+        <div id="map" class="w-full h-full min-h-[520px] z-10"></div>
+
+        <!-- Map Footer Legend -->
+        <div class="bg-slate-950/95 border-t border-slate-800/80 px-4 py-2 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-y-2 z-20">
+          <div class="flex items-center space-x-4">
+            <span class="font-semibold text-slate-300">Hazard Legend:</span>
+            <div class="flex items-center space-x-1.5">
+              <span class="w-3 h-3 rounded-full bg-red-500 inline-block shadow-sm shadow-red-500"></span>
+              <span>High (Dangerous)</span>
+            </div>
+            <div class="flex items-center space-x-1.5">
+              <span class="w-3 h-3 rounded-full bg-amber-400 inline-block"></span>
+              <span>Medium</span>
+            </div>
+            <div class="flex items-center space-x-1.5">
+              <span class="w-3 h-3 rounded-full bg-emerald-400 inline-block"></span>
+              <span>Low</span>
+            </div>
+            <div class="flex items-center space-x-1.5">
+              <span class="w-3 h-3 rounded-full bg-blue-400 inline-block"></span>
+              <span>Repaired</span>
+            </div>
+          </div>
+          <div class="text-[11px] text-slate-500">
+            Coordinates: <span id="mouse-coords" class="font-mono text-slate-400">40.7516, -73.9754</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAILS & VERIFICATION SIDE PANEL (LG: 4 COLS) -->
+      <div class="lg:col-span-4 flex flex-col bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl" id="details-panel-container">
+        
+        <!-- Dynamic Header -->
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+          <div class="flex items-center space-x-2">
+            <i class="fa-solid fa-circle-info text-cyan-400 text-sm"></i>
+            <h3 class="font-bold text-sm text-white" id="panel-title">Hazard Dossier</h3>
+          </div>
+          <span id="panel-status-badge" class="px-2 py-0.5 rounded text-[11px] font-semibold uppercase bg-slate-800 text-slate-300 border border-slate-700">
+            Select Marker
+          </span>
+        </div>
+
+        <!-- Scrollable Details Body -->
+        <div class="p-5 flex-1 overflow-y-auto space-y-5" id="panel-body">
+          
+          <!-- Default Empty State Placeholder -->
+          <div id="panel-empty-state" class="text-center py-14 space-y-4">
+            <div class="w-16 h-16 mx-auto rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-500">
+              <i class="fa-solid fa-map-location-dot text-2xl text-cyan-400/70"></i>
+            </div>
+            <div class="space-y-1">
+              <h4 class="font-semibold text-slate-200 text-sm">No Pothole Selected</h4>
+              <p class="text-xs text-slate-400 max-w-xs mx-auto">
+                Click any colored hazard marker on the map to review the AI confidence telemetry, street photos, repair progress, and citizen votes.
+              </p>
+            </div>
+            <button onclick="RoadGuardApp.selectRandomPothole()" class="inline-flex items-center px-3.5 py-1.5 text-xs font-medium rounded-lg text-cyan-400 bg-cyan-950/50 border border-cyan-800/60 hover:bg-cyan-900/50 transition">
+              <i class="fa-solid fa-bolt mr-1.5"></i> Inspect Sample Hazard
+            </button>
+          </div>
+
+          <!-- Active Pothole Detailed View (Hidden by default) -->
+          <div id="panel-active-content" class="hidden space-y-5">
+            
+            <!-- Image with AI Detection Overlay Toggle -->
+            <div class="relative rounded-xl overflow-hidden border border-slate-700 bg-black group">
+              <img id="detail-image" src="" alt="Pothole photo" class="w-full h-48 object-cover">
+              
+              <!-- Bounding Box Overlay for AI Detection -->
+              <div id="detail-bbox" class="ai-bbox" style="top: 25%; left: 30%; width: 45%; height: 50%;">
+                <div class="ai-bbox-label">
+                  <i class="fa-solid fa-bullseye text-[10px]"></i>
+                  <span id="detail-bbox-text">YOLOv8: 96%</span>
+                </div>
+              </div>
+
+              <!-- Top Bar Over Image -->
+              <div class="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none">
+                <span id="detail-severity-badge" class="px-2.5 py-1 rounded text-xs font-bold uppercase tracking-wider text-white shadow-md">
+                  HIGH SEVERITY
+                </span>
+                <span class="bg-black/70 backdrop-blur-md px-2 py-1 rounded text-[11px] font-mono text-cyan-300 border border-white/10">
+                  <i class="fa-solid fa-shield-halved text-cyan-400 mr-1"></i>AI Verified
+                </span>
+              </div>
+
+              <!-- Repaired Before/After Comparison Pill if Repaired -->
+              <div id="repaired-photo-toggle" class="hidden absolute bottom-2 right-2">
+                <button id="btn-toggle-after-photo" class="px-2.5 py-1 rounded bg-blue-600/90 hover:bg-blue-500 text-white text-[11px] font-medium shadow backdrop-blur transition">
+                  <i class="fa-solid fa-images mr-1"></i> View Fixed Road
+                </button>
+              </div>
+            </div>
+
+            <!-- Address & Telemetry Grid -->
+            <div>
+              <h4 id="detail-title" class="font-bold text-slate-100 text-base leading-snug">Severe crater near crosswalk</h4>
+              <p id="detail-address" class="text-xs text-slate-400 mt-1 flex items-center">
+                <i class="fa-solid fa-location-dot text-rose-400 mr-1.5"></i> 450 Lexington Ave, Midtown
+              </p>
+            </div>
+
+            <!-- AI Telemetry Metric Cards -->
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                <span class="text-[10px] text-slate-500 uppercase font-medium">Confidence</span>
+                <p id="detail-confidence" class="font-bold text-cyan-400 text-sm mt-0.5">96%</p>
+              </div>
+              <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                <span class="text-[10px] text-slate-500 uppercase font-medium">Est. Width</span>
+                <p id="detail-width" class="font-bold text-slate-200 text-sm mt-0.5">52 cm</p>
+              </div>
+              <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                <span class="text-[10px] text-slate-500 uppercase font-medium">Depth</span>
+                <p id="detail-depth" class="font-bold text-rose-400 text-sm mt-0.5">9 cm</p>
+              </div>
+            </div>
+
+            <!-- Status Stepper Flow -->
+            <div class="bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/80 space-y-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-slate-400 font-medium">Municipal Lifecycle:</span>
+                <span id="detail-assigned-crew" class="text-amber-400 font-semibold text-[11px]">Unassigned</span>
+              </div>
+              <div class="flex items-center justify-between pt-1">
+                <div class="step-node flex flex-col items-center flex-1" id="step-reported">
+                  <div class="w-6 h-6 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-[10px] font-bold">1</div>
+                  <span class="text-[9px] text-slate-400 mt-1">Reported</span>
+                </div>
+                <div class="h-0.5 bg-slate-700 flex-1 mx-1" id="line-1"></div>
+                <div class="step-node flex flex-col items-center flex-1" id="step-assigned">
+                  <div class="w-6 h-6 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] font-bold">2</div>
+                  <span class="text-[9px] text-slate-400 mt-1">Assigned</span>
+                </div>
+                <div class="h-0.5 bg-slate-700 flex-1 mx-1" id="line-2"></div>
+                <div class="step-node flex flex-col items-center flex-1" id="step-inprogress">
+                  <div class="w-6 h-6 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] font-bold">3</div>
+                  <span class="text-[9px] text-slate-400 mt-1">Repairing</span>
+                </div>
+                <div class="h-0.5 bg-slate-700 flex-1 mx-1" id="line-3"></div>
+                <div class="step-node flex flex-col items-center flex-1" id="step-repaired">
+                  <div class="w-6 h-6 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] font-bold">4</div>
+                  <span class="text-[9px] text-slate-400 mt-1">Resolved</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Notes & Observations -->
+            <div class="text-xs text-slate-300 bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+              <strong class="text-slate-400 block text-[10px] uppercase font-semibold mb-1">Inspector / AI Notes</strong>
+              <p id="detail-notes">High pedestrian and bus transit corridor. Urgent asphalt patch required.</p>
+            </div>
+
+            <!-- Citizen Interaction & Verification Buttons -->
+            <div class="flex items-center space-x-2 pt-1">
+              <button id="btn-upvote" class="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center justify-center space-x-2 transition active:scale-95">
+                <i class="fa-solid fa-thumbs-up text-cyan-400"></i>
+                <span>Confirm Hazard (<span id="detail-upvotes">28</span>)</span>
+              </button>
+
+              <button id="btn-flag-fixed" class="flex-1 py-2 px-3 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/60 text-xs font-semibold flex items-center justify-center space-x-1.5 transition active:scale-95">
+                <i class="fa-solid fa-check-double text-emerald-400"></i>
+                <span>Verify Fixed</span>
+              </button>
+            </div>
+
+            <!-- Community Comments Section -->
+            <div class="border-t border-slate-800 pt-4 space-y-3">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-semibold text-slate-300"><i class="fa-regular fa-comments text-cyan-400 mr-1.5"></i>Community Activity</span>
+                <span id="detail-comments-count" class="text-[11px] text-slate-500">2 reports</span>
+              </div>
+
+              <!-- Comment Feed -->
+              <div id="detail-comments-feed" class="space-y-2 max-h-40 overflow-y-auto pr-1">
+                <!-- Dynamically populated -->
+              </div>
+
+              <!-- Add Comment Input Box -->
+              <div class="flex items-center space-x-2 pt-1">
+                <input type="text" id="input-new-comment" placeholder="Add an observation or warning..."
+                       class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition">
+                <button id="btn-post-comment" class="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition">
+                  Post
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- MODAL: REPORT NEW POTHOLE WITH AI SCANNER -->
+  <div id="report-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm hidden">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+      
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+        <div class="flex items-center space-x-3">
+          <div class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
+            <i class="fa-solid fa-camera-retro"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-white text-base">Civic Pothole Reporting & AI Scanner</h3>
+            <p class="text-xs text-slate-400">Automated computer vision detection & GPS geo-tagging</p>
+          </div>
+        </div>
+        <button id="btn-close-modal" class="text-slate-400 hover:text-white p-1 rounded-lg transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Step-by-Step AI Scanner) -->
+      <div class="p-6 overflow-y-auto space-y-6 flex-1">
+        
+        <!-- Step 1: Upload or Choose Sample Road Image -->
+        <div class="space-y-3">
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+            1. Road Image Capture / Upload
+          </label>
+
+          <!-- Quick Sample Selector for immediate interactive testing -->
+          <div class="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+            <span class="text-slate-500 text-[11px] whitespace-nowrap">Load Preset Test:</span>
+            <button type="button" class="sample-img-btn px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                    data-url="https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=800&q=80"
+                    data-severity="high" data-conf="0.96" data-width="50" data-depth="9" data-name="Deep Asphalt Crater">
+              ⚡ Deep Crater
+            </button>
+            <button type="button" class="sample-img-btn px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                    data-url="https://images.unsplash.com/photo-1541888946425-d0fbb186c5f7?auto=format&fit=crop&w=800&q=80"
+                    data-severity="medium" data-conf="0.88" data-width="35" data-depth="5" data-name="Shoulder Erosion">
+              ⚡ Medium Rut
+            </button>
+            <button type="button" class="sample-img-btn px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                    data-url="https://images.unsplash.com/photo-1584463699042-458cfc2ceea9?auto=format&fit=crop&w=800&q=80"
+                    data-severity="low" data-conf="0.82" data-width="22" data-depth="3" data-name="Minor Surface Crack">
+              ⚡ Surface Crack
+            </button>
+          </div>
+
+          <!-- Preview & AI Scanner Frame -->
+          <div class="ai-scanner-box relative w-full h-56 rounded-xl border-2 border-dashed border-slate-700 bg-slate-950 flex items-center justify-center overflow-hidden">
+            <img id="preview-image" src="https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=800&q=80" 
+                 alt="Image preview" class="w-full h-full object-cover">
+            
+            <!-- Laser scan beam (active during scan) -->
+            <div id="modal-scan-line" class="ai-scan-line hidden"></div>
+            <div id="modal-scan-grid" class="ai-scan-grid hidden"></div>
+
+            <!-- Dynamic AI Bounding Box overlay -->
+            <div id="modal-bbox" class="ai-bbox" style="top: 25%; left: 25%; width: 50%; height: 50%;">
+              <div class="ai-bbox-label">
+                <i class="fa-solid fa-circle-notch fa-spin text-[10px] hidden" id="scan-spinner"></i>
+                <span id="modal-bbox-label">YOLOv8-Pothole: 96%</span>
+              </div>
+            </div>
+
+            <!-- Upload File Input Overlay Button -->
+            <div class="absolute bottom-3 right-3 flex items-center gap-2">
+              <label for="file-upload" class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-white text-xs font-medium border border-slate-700 shadow-md backdrop-blur transition flex items-center gap-1.5">
+                <i class="fa-solid fa-arrow-up-from-bracket text-cyan-400"></i>
+                <span>Upload Custom Image</span>
+              </label>
+              <input id="file-upload" type="file" accept="image/*" class="hidden">
+            </div>
+          </div>
+
+          <!-- Trigger AI Scan Button -->
+          <div class="flex items-center justify-between bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+            <div class="flex items-center space-x-2">
+              <i class="fa-solid fa-robot text-cyan-400"></i>
+              <span class="text-xs text-slate-300 font-medium">Neural Vision Diagnostics</span>
+            </div>
+            <button id="btn-trigger-ai-scan" type="button" class="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Run AI Vision Scan
+            </button>
+          </div>
+
+          <!-- AI Analysis Result Telemetry Badge -->
+          <div id="ai-scan-result-card" class="bg-slate-800/60 p-3.5 rounded-xl border border-slate-700 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <span class="text-slate-200 font-semibold">Pothole Hazard Identified</span>
+            </div>
+            <div class="flex items-center space-x-4 text-slate-300">
+              <span>Confidence: <strong class="text-cyan-400" id="ai-res-conf">96.4%</strong></span>
+              <span>Severity: <strong class="text-red-400 uppercase font-bold" id="ai-res-sev">HIGH</strong></span>
+              <span>Est. Size: <strong class="text-slate-100" id="ai-res-size">50x9 cm</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: Location and Street Information -->
+        <div class="space-y-3">
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+            2. Geo-Location & Incident Metadata
+          </label>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Street Address or Landmark</label>
+              <input type="text" id="report-input-address" value="Regal Square, MG Road, Indore" 
+                     class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 transition">
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Hazard Title</label>
+              <input type="text" id="report-input-title" value="Deep pothole in middle transit lane" 
+                     class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 transition">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Latitude</label>
+              <input type="number" step="0.0001" id="report-input-lat" value="22.7196" 
+                     class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Longitude</label>
+              <input type="number" step="0.0001" id="report-input-lng" value="75.8577" 
+                     class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Severity Class</label>
+              <select id="report-input-severity" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                <option value="high" selected>High (Crater)</option>
+                <option value="medium">Medium (Rut)</option>
+                <option value="low">Low (Crack)</option>
+              </select>
+            </div>
+            <div class="flex items-end">
+              <button type="button" id="btn-use-current-gps" class="w-full py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1">
+                <i class="fa-solid fa-location-arrow"></i> GPS Detect
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Citizen Notes / Vehicle Impact Risk</label>
+            <textarea id="report-input-notes" rows="2" placeholder="e.g. Sharp edges causing tire damage for two-wheelers and sedans..." 
+                      class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 transition"></textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
+        <button type="button" id="btn-cancel-modal" class="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition">
+          Cancel
+        </button>
+        <button type="button" id="btn-submit-report" class="px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 text-xs font-bold shadow-lg shadow-cyan-500/20 transition active:scale-95 flex items-center gap-2">
+          <i class="fa-solid fa-paper-plane"></i>
+          <span>Submit to City Road Authority</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- SCRIPTS -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
